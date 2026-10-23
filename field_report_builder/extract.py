@@ -177,7 +177,9 @@ def work_item(sentence: str) -> WorkItem:
     m = STATION_RE.search(sentence)
     if m:
         a = re.sub(r"\s+", "", m.group(1))
-        location = f"Sta. {a}" + (f" to {re.sub(r'\s+', '', m.group(2))}" if m.group(2) else "")
+        location = f"Sta. {a}"
+        if m.group(2):
+            location += " to " + re.sub(r"\s+", "", m.group(2))
     side = SIDE_RE.search(sentence)
     if side:
         location = (location + ", " if location else "") + side.group(1).lower()
