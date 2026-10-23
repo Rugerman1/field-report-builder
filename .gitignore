@@ -1,0 +1,15 @@
+__pycache__/
+*.pyc
+.pytest_cache/
+build/
+dist/
+*.egg-info/
+.venv/
+venv/
+*.pdf
+*.docx
+!docs/*.pdf
+!docs/*.docx
+*.frb.json
+!docs/*.frb.json
+settings.json

@@ -1,0 +1,20 @@
+{
+ "results": [
+  {
+   "name": "Clemson",
+   "latitude": 34.68344,
+   "longitude": -82.83737,
+   "country_code": "US",
+   "country": "United States",
+   "admin1": "South Carolina"
+  },
+  {
+   "name": "Clemson",
+   "latitude": 34.5,
+   "longitude": -80.0,
+   "country_code": "US",
+   "country": "United States",
+   "admin1": "North Carolina"
+  }
+ ]
+}

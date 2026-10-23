@@ -1,0 +1,92 @@
+name: Build Windows app
+
+on:
+  push:
+    branches: [main]
+    tags: ["v*"]
+  pull_request:
+  workflow_dispatch:
+    inputs:
+      release_tag:
+        description: "Create a release with this tag (for example v0.1.0); leave blank for a plain build"
+        required: false
+        default: ""
+
+permissions:
+  contents: write
+
+env:
+  MEMO_TEXT: >-
+    Palmetto Site Works had four laborers and two operators on site today.
+    One excavator was working all day on the storm drain trench.
+    We poured eighteen cubic yards of concrete for the curb.
+
+jobs:
+  test:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - run: pip install -r requirements.txt
+      - name: Record a spoken test memo with Windows text-to-speech
+        shell: pwsh
+        run: |
+          Add-Type -AssemblyName System.Speech
+          $s = New-Object System.Speech.Synthesis.SpeechSynthesizer
+          $s.SetOutputToWaveFile("$env:RUNNER_TEMP\memo.wav")
+          $s.Speak($env:MEMO_TEXT)
+          $s.Dispose()
+          "FRB_TEST_AUDIO=$env:RUNNER_TEMP\memo.wav" >> $env:GITHUB_ENV
+      - name: Tests (including live Whisper and Open-Meteo)
+        env:
+          FRB_LIVE: "1"
+        run: python -m pytest -q -rs
+
+  build:
+    needs: test
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - run: pip install -r requirements.txt
+      - name: Build the app folder
+        run: pyinstaller packaging/field_report_builder.spec --noconfirm --distpath dist
+      - name: Self-test the exe (window, sample photos, offline sorter, PDF and Word export)
+        shell: pwsh
+        run: |
+          $p = Start-Process -FilePath dist\FieldReportBuilder\FieldReportBuilder.exe -ArgumentList "--selftest" -PassThru -Wait
+          if ($p.ExitCode -ne 0) { throw "FieldReportBuilder.exe --selftest failed with exit code $($p.ExitCode)" }
+      - name: Transcribe a spoken memo with the packaged exe
+        shell: pwsh
+        run: |
+          Add-Type -AssemblyName System.Speech
+          $s = New-Object System.Speech.Synthesis.SpeechSynthesizer
+          $s.SetOutputToWaveFile("$env:RUNNER_TEMP\memo.wav")
+          $s.Speak($env:MEMO_TEXT)
+          $s.Dispose()
+          $out = "$env:RUNNER_TEMP\memo.txt"
+          $p = Start-Process -FilePath dist\FieldReportBuilder\FieldReportBuilder.exe -ArgumentList "--transcribe","$env:RUNNER_TEMP\memo.wav","$out","--model","tiny.en" -PassThru -Wait
+          if ($p.ExitCode -ne 0) { throw "transcription failed with exit code $($p.ExitCode)" }
+          Get-Content $out
+          $text = (Get-Content $out -Raw).ToLower()
+          foreach ($w in "excavator","laborers","concrete") { if (-not $text.Contains($w)) { throw "missing '$w' in transcript" } }
+      - name: Zip
+        shell: pwsh
+        run: Compress-Archive -Path dist\FieldReportBuilder -DestinationPath dist\FieldReportBuilder-windows.zip
+      - uses: actions/upload-artifact@v4
+        with:
+          name: FieldReportBuilder-windows
+          path: dist/FieldReportBuilder-windows.zip
+      - name: Attach to release
+        if: startsWith(github.ref, 'refs/tags/v') || github.event.inputs.release_tag != ''
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.event.inputs.release_tag || github.ref_name }}
+          files: dist/FieldReportBuilder-windows.zip
+          generate_release_notes: true
